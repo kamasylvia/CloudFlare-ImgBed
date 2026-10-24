@@ -216,7 +216,7 @@ async function processFileUpload(context, formdata = null) {
             const digest = await crypto.subtle.digest('SHA-256', fileBuffer);
             dedupHash = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
 
-            const dedupDb = getDatabase(env);
+            const dedupDb = getDatabase(context.env);
             const existingFileId = await dedupDb.get(`dedup:${dedupHash}`);
             if (existingFileId && typeof existingFileId === 'string' && existingFileId !== 'undefined') {
                 console.log(`Content dedup: ${fileName} matches existing file ${existingFileId}, returning existing link`);
@@ -235,7 +235,7 @@ async function processFileUpload(context, formdata = null) {
     // 预写去重索引（渠道上传失败时回滚）
     if (dedupHash) {
         try {
-            await getDatabase(env).put(`dedup:${dedupHash}`, fullId);
+            await getDatabase(context.env).put(`dedup:${dedupHash}`, fullId);
         } catch (err) {
             console.error('Failed to record dedup index:', err);
             dedupHash = null;
@@ -322,7 +322,7 @@ async function processFileUpload(context, formdata = null) {
     if (res.status !== 200 && dedupHash) {
         // 上传最终失败，回滚去重索引，避免残留无效映射
         try {
-            await getDatabase(env).delete(`dedup:${dedupHash}`);
+            await getDatabase(context.env).delete(`dedup:${dedupHash}`);
         } catch (e) {
             console.error('Failed to rollback dedup index:', e);
         }
