@@ -36,8 +36,8 @@ export async function onRequest(context) {
     const db = getDatabase(env);
     const uploadConfig = await getUploadConfig(db, env);
 
-    // 1. 列出所有启用渠道的真实对象
-    const realKeys = new Set();
+    // 1. 列出所有启用渠道的真实对象(记录 LastModified 供缺失补录)
+    const realObjects = new Map(); // key -> lastModified(ms)
     const channelReport = [];
     const channels = (uploadConfig.s3?.channels || []).filter(ch => ch.enabled);
     for (const channel of channels) {
@@ -51,7 +51,7 @@ export async function onRequest(context) {
                     ContinuationToken: token,
                 }));
                 for (const obj of resp.Contents || []) {
-                    realKeys.add(obj.Key);
+                    realObjects.set(obj.Key, obj.LastModified ? new Date(obj.LastModified).getTime() : Date.now());
                     count++;
                 }
                 token = resp.IsTruncated ? resp.NextContinuationToken : undefined;
@@ -61,6 +61,7 @@ export async function onRequest(context) {
             channelReport.push({ channel: channel.name, error: err.message });
         }
     }
+    const realKeys = realObjects;
 
     // 2. 读现有分片索引
     const metaStr = await db.get(INDEX_META_KEY);
@@ -97,6 +98,7 @@ export async function onRequest(context) {
         ghosts: ghosts.length,
         missingInIndex: missingInIndex.length,
         deleted: [],
+        addedMissing: [],
         kept: normals.length,
         dryRun,
     };
@@ -118,9 +120,46 @@ export async function onRequest(context) {
         }
     }
 
-    // 5. 重写分片(只保留真实存在的记录),清理多余分片
+    // 5. 补录:渠道存在但索引缺失的对象,写入最小记录(避免这些文件在面板中不可见)
+    const addedMissing = [];
+    for (const key of missingInIndex) {
+        const fileName = key.split('/').pop();
+        const directory = key.includes('/') ? key.substring(0, key.lastIndexOf('/') + 1) : '';
+        const lastModified = realObjects.get(key) || Date.now();
+        const metadata = {
+            Id: key,
+            FileName: fileName,
+            FileType: 'application/octet-stream',
+            TimeStamp: lastModified,
+            Directory: directory,
+            Channel: 'S3',
+            ChannelName: (channels.find(c => (realObjects.get(key) !== undefined)))?.name || channels[0]?.name || 'S3',
+            Label: 'None',
+            Tags: [],
+        };
+        try {
+            await db.put(key, '', { metadata });
+            addedMissing.push(key);
+        } catch (err) {
+            console.error('prune-ghosts: failed to add missing entry:', err);
+        }
+    }
+    report.addedMissing = addedMissing;
+
+    // 6. 重写分片(全部真实记录),清理多余分片
     const chunkSize = 500; // 与 indexManager 的 INDEX_CHUNK_SIZE_D1 一致(docker 部署)
-    const keptFiles = normals;
+    const keptFiles = normals.concat(
+        missingInIndex.map(key => ({
+            id: key,
+            metadata: {
+                Id: key,
+                FileName: key.split('/').pop(),
+                TimeStamp: realObjects.get(key) || Date.now(),
+                Directory: key.includes('/') ? key.substring(0, key.lastIndexOf('/') + 1) : '',
+            },
+        }))
+    );
+    keptFiles.sort((a, b) => (a.metadata?.TimeStamp || 0) - (b.metadata?.TimeStamp || 0));
     const chunks = [];
     for (let i = 0; i < keptFiles.length; i += chunkSize) {
         chunks.push(keptFiles.slice(i, i + chunkSize));
