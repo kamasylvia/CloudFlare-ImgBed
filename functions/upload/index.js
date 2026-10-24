@@ -193,8 +193,42 @@ async function processFileUpload(context, formdata = null) {
 
     const fileExt = resolveFileExt(fileName, fileType);
 
+    // ===== 内容去重（SHA-256）：命中已有文件时直接返回其链接，不再重复存储 =====
+    // 默认开启；可通过 query 参数 dedup=false 跳过单次上传，或设置环境变量 DEDUP_DISABLED=true 全局关闭
+    // 注意：分片上传（chunkUpload/chunkMerge）路径暂未接入去重
+    const dedupEnabled = url.searchParams.get('dedup') !== 'false' && context.env?.DEDUP_DISABLED !== 'true';
+    let dedupHash = null;
+    if (dedupEnabled) {
+        try {
+            const fileBuffer = await file.arrayBuffer();
+            const digest = await crypto.subtle.digest('SHA-256', fileBuffer);
+            dedupHash = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+            const dedupDb = getDatabase(env);
+            const existingFileId = await dedupDb.get(`dedup:${dedupHash}`);
+            if (existingFileId && typeof existingFileId === 'string' && existingFileId !== 'undefined') {
+                console.log(`Content dedup: ${fileName} matches existing file ${existingFileId}, returning existing link`);
+                return buildUploadResponse(context, `/file/${existingFileId}`);
+            }
+        } catch (err) {
+            // 去重检查失败不影响上传主流程
+            console.error('Content dedup check failed, falling back to normal upload:', err);
+            dedupHash = null;
+        }
+    }
+
     // 构建文件ID
     const fullId = await buildUniqueFileId(context, fileName, fileType);
+
+    // 预写去重索引（渠道上传失败时回滚）
+    if (dedupHash) {
+        try {
+            await getDatabase(env).put(`dedup:${dedupHash}`, fullId);
+        } catch (err) {
+            console.error('Failed to record dedup index:', err);
+            dedupHash = null;
+        }
+    }
 
     // 获得返回链接格式, default为返回/file/id, full为返回完整链接
     const returnFormat = url.searchParams.get('returnFormat') || 'default';
@@ -273,6 +307,14 @@ async function processFileUpload(context, formdata = null) {
 
     // 上传失败，开始自动切换渠道重试
     const res = await tryRetry(err, context, uploadChannel, fullId, metadata, fileExt, fileName, fileType, returnLink);
+    if (res.status !== 200 && dedupHash) {
+        // 上传最终失败，回滚去重索引，避免残留无效映射
+        try {
+            await getDatabase(env).delete(`dedup:${dedupHash}`);
+        } catch (e) {
+            console.error('Failed to rollback dedup index:', e);
+        }
+    }
     return res;
 }
 
