@@ -89,7 +89,7 @@ export async function onRequest(context) {
             normals.push(entry);
         }
     }
-    const missingInIndex = [...realKeys].filter(k => !indexedKeys.has(k));
+    const missingInIndex = Array.from(realObjects.keys()).filter(k => !indexedKeys.has(k));
 
     const report = {
         channels: channelReport,
