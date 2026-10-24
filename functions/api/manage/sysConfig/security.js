@@ -106,6 +106,8 @@ export async function onRequest(context) {
                     settings.auth.admin.adminUsername = newSettings.auth.admin.adminUsername;
                 }
                 settings.auth.admin.adminPassword = newSettings.auth.admin.adminPassword;
+                // 回写匿名删除开关(缺失回写导致开关永远无法修改 —— 根因修复)
+                settings.auth.admin.allowAnonymousDelete = newSettings.auth.admin.allowAnonymousDelete;
             }
         }
 
