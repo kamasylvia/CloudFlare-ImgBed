@@ -30,9 +30,11 @@ export async function onRequest(context) {
     if (request.method === 'POST') {
         const body = await request.json()
         const settings = body
-        // 去重开关：前端未提交时沿用已有值
+        // 去重开关：前端未提交时沿用已有值（保留用户的显式选择）
         const previousUploadSettings = JSON.parse((await db.get('manage@sysConfig@upload')) || '{}')
-        settings.dedup = body.dedup ?? previousUploadSettings.dedup ?? { enabled: false }
+        if (settings.dedup === undefined) {
+            settings.dedup = previousUploadSettings.dedup
+        }
 
         try {
             for (const channel of settings.s3?.channels || []) {
@@ -102,7 +104,8 @@ export async function getUploadConfig(db, env) {
     telegram.loadBalance = tgLoadBalance
 
     // =====================内容去重开关=====================
-    settings.dedup = settingsKV.dedup || { enabled: false }
+    // 默认值随部署形态：自部署（img_d1 存在）默认开启，Workers 默认关闭
+    settings.dedup = settingsKV.dedup ?? { enabled: typeof env.img_d1 !== 'undefined' }
 
 
 
