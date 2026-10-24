@@ -26,6 +26,7 @@ COPY deploy/profiles ./deploy/profiles
 COPY frontend-dist ./frontend-dist
 COPY functions ./functions
 COPY database ./database
+COPY scripts ./scripts
 COPY deploy/server ./deploy/server
 
 EXPOSE 8080
