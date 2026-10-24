@@ -219,8 +219,14 @@ async function processFileUpload(context, formdata = null) {
             const dedupDb = getDatabase(context.env);
             const existingFileId = await dedupDb.get(`dedup:${dedupHash}`);
             if (existingFileId && typeof existingFileId === 'string' && existingFileId !== 'undefined') {
-                console.log(`Content dedup: ${fileName} matches existing file ${existingFileId}, returning existing link`);
-                return buildUploadResponse(context, `/file/${existingFileId}`);
+                // 悬空校验:目标文件记录可能已被删除(如管理面板清理),此时清掉失效索引并正常上传
+                const fileRecord = await dedupDb.get(existingFileId);
+                if (fileRecord !== null && fileRecord !== undefined) {
+                    console.log(`Content dedup: ${fileName} matches existing file ${existingFileId}, returning existing link`);
+                    return buildUploadResponse(context, `/file/${existingFileId}`);
+                }
+                await dedupDb.delete(`dedup:${dedupHash}`).catch(() => {});
+                console.log(`Content dedup: stale index for ${existingFileId} removed`);
             }
         } catch (err) {
             // 去重检查失败不影响上传主流程
