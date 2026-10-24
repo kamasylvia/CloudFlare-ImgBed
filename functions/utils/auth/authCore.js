@@ -31,8 +31,11 @@ const UNAUTHORIZED = { authorized: false, authType: null };
  * @returns {Promise<{authorized: boolean, authType: string|null}|null>}
  *          认证通过返回结果，未通过返回 null（交给调用方继续）
  */
-async function checkAdmin({ env, request, adminConfigured }) {
+async function checkAdmin({ env, request, adminConfigured, allowAnonymousDelete = true }) {
     if (!adminConfigured) {
+        if (!allowAnonymousDelete) {
+            return null; // 显式关闭匿名删除时，即使未配置管理员认证也拒绝匿名
+        }
         return AUTHORIZED('admin'); // 未配置管理员认证，视为管理员身份放行
     }
 
@@ -51,7 +54,7 @@ async function checkAdmin({ env, request, adminConfigured }) {
  * @returns {Promise<{authorized: boolean, authType: string|null}|null>}
  *          认证通过/失败返回结果，无法判定返回 null
  */
-async function checkUser({ env, request, url, authCodeConfigured, userAuthCode }) {
+async function checkUser({ env, request, url, authCodeConfigured, userAuthCode, allowAnonymousUpload = true }) {
     // admin session（管理员身份也可访问用户资源）
     const adminSession = await validateSession(env, request, 'admin');
     if (adminSession.valid) {
@@ -66,6 +69,9 @@ async function checkUser({ env, request, url, authCodeConfigured, userAuthCode }
 
     // authCode
     if (!authCodeConfigured) {
+        if (!allowAnonymousUpload) {
+            return null; // 显式关闭匿名上传时，即使未配置用户认证也拒绝匿名
+        }
         return AUTHORIZED('user'); // 未配置用户认证，视为用户身份放行
     }
 
@@ -118,18 +124,18 @@ export async function authenticate({
     const userCtx = { env, request, url, authCodeConfigured, userAuthCode };
 
     if (authScope === AUTH_SCOPE.ADMIN) {
-        return (await checkAdmin(adminCtx)) || UNAUTHORIZED;
+        return (await checkAdmin({ ...adminCtx, allowAnonymousDelete: securityConfig.auth?.admin?.allowAnonymousDelete !== false })) || UNAUTHORIZED;
     }
 
     if (authScope === AUTH_SCOPE.USER) {
-        return await checkUser(userCtx);
+        return await checkUser({ ...userCtx, allowAnonymousUpload: securityConfig.auth?.user?.allowAnonymousUpload !== false });
     }
 
     // EITHER: 任一通过即可
-    const adminResult = await checkAdmin(adminCtx);
+    const adminResult = await checkAdmin({ ...adminCtx, allowAnonymousDelete: securityConfig.auth?.admin?.allowAnonymousDelete !== false });
     if (adminResult?.authorized) return adminResult;
 
-    return await checkUser(userCtx);
+    return await checkUser({ ...userCtx, allowAnonymousUpload: securityConfig.auth?.user?.allowAnonymousUpload !== false });
 }
 
 /**

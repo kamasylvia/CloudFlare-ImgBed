@@ -79,6 +79,10 @@ export async function onRequest(context) {
                     userPasswordChanged = true;
                 }
                 delete newSettings.auth.user._clear;
+                // 布尔开关未随请求提交时沿用原值，避免被前端整段覆盖丢失
+                if (newSettings.auth.user.allowAnonymousUpload === undefined) {
+                    newSettings.auth.user.allowAnonymousUpload = settings.auth.user.allowAnonymousUpload;
+                }
                 settings.auth.user = newSettings.auth.user;
             }
             if (newSettings.auth.admin) {
@@ -94,6 +98,9 @@ export async function onRequest(context) {
                     adminPasswordChanged = true;
                 }
                 delete newSettings.auth.admin._clear;
+                if (newSettings.auth.admin.allowAnonymousDelete === undefined) {
+                    newSettings.auth.admin.allowAnonymousDelete = settings.auth.admin.allowAnonymousDelete;
+                }
                 if (newSettings.auth.admin.adminUsername !== undefined) {
                     settings.auth.admin.adminUsername = newSettings.auth.admin.adminUsername;
                 }
@@ -148,10 +155,12 @@ export async function getSecurityConfig(db, env) {
     const auth = {
         user: {
             authCode: kvAuth.user?.authCode ?? env.AUTH_CODE ?? '',
+            allowAnonymousUpload: kvAuth.user?.allowAnonymousUpload ?? (env.ALLOW_ANONYMOUS_UPLOAD !== 'false'),
         },
         admin: {
             adminUsername: kvAuth.admin?.adminUsername ?? env.BASIC_USER ?? '',
             adminPassword: kvAuth.admin?.adminPassword ?? env.BASIC_PASS ?? '',
+            allowAnonymousDelete: kvAuth.admin?.allowAnonymousDelete ?? (env.ALLOW_ANONYMOUS_DELETE !== 'false'),
         }
     }
     settings.auth = auth

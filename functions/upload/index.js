@@ -196,7 +196,10 @@ async function processFileUpload(context, formdata = null) {
     // ===== 内容去重（SHA-256）：命中已有文件时直接返回其链接，不再重复存储 =====
     // 默认开启；可通过 query 参数 dedup=false 跳过单次上传，或设置环境变量 DEDUP_DISABLED=true 全局关闭
     // 注意：分片上传（chunkUpload/chunkMerge）路径暂未接入去重
-    const dedupEnabled = url.searchParams.get('dedup') !== 'false' && context.env?.DEDUP_DISABLED !== 'true';
+    // 去重默认关闭（兼容 Workers KV 计费场景）：设置项 upload.dedup.enabled 或环境变量 DEDUP_ENABLED 开启
+    const dedupEnabled =
+        (context.uploadConfig?.dedup?.enabled === true || context.env?.DEDUP_ENABLED === 'true') &&
+        url.searchParams.get('dedup') !== 'false';
     let dedupHash = null;
     if (dedupEnabled) {
         try {
