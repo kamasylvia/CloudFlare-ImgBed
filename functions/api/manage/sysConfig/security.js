@@ -98,6 +98,7 @@ export async function onRequest(context) {
                     adminPasswordChanged = true;
                 }
                 delete newSettings.auth.admin._clear;
+                // 开关与凭证生命周期解耦:清除管理员不重置匿名删除开关
                 if (newSettings.auth.admin.allowAnonymousDelete === undefined) {
                     newSettings.auth.admin.allowAnonymousDelete = settings.auth.admin.allowAnonymousDelete;
                 }
@@ -160,6 +161,7 @@ export async function getSecurityConfig(db, env) {
         admin: {
             adminUsername: kvAuth.admin?.adminUsername ?? env.BASIC_USER ?? '',
             adminPassword: kvAuth.admin?.adminPassword ?? env.BASIC_PASS ?? '',
+            // 开关一旦持久化过就以持久值为准(清除管理员凭证不重置开关);从未设置过才用环境变量/默认 true
             allowAnonymousDelete: kvAuth.admin?.allowAnonymousDelete ?? (env.ALLOW_ANONYMOUS_DELETE !== 'false'),
         }
     }
