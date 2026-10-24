@@ -190,9 +190,10 @@ export async function onRequest(context) {
     do {
         const list = await db.list({ limit: 1000, cursor: opCursor });
         for (const key of list.keys || []) {
-            if (key.startsWith(OPERATION_KEY_PREFIX)) opsKeys.push(key);
+            const opKey = typeof key === 'string' ? key : key?.name;
+            if (typeof opKey === 'string' && opKey.startsWith(OPERATION_KEY_PREFIX)) opsKeys.push(opKey);
         }
-        opCursor = list.cursor;
+        opCursor = list.list_complete ? null : list.cursor;
     } while (opCursor && opsKeys.length < 5000);
     for (const key of opsKeys) {
         await db.delete(key);
