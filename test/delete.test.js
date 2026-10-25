@@ -42,8 +42,9 @@ describe('delete files', () => {
             const ctx = context('missing.png');
             const response = await single.onRequest(ctx);
             assert.equal(response.status, 200);
-            assert.equal((await response.json()).success, true);
-            assert.equal((await response.json()).existed, false);
+            const body = await response.json();
+            assert.equal(body.success, true);
+            assert.equal(body.existed, false);
             assert.deepEqual((await fixture.readFiles(ctx)).files, []);
         }
         assert.deepEqual(fixture.purges, []);
