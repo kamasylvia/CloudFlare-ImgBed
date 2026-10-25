@@ -82,7 +82,7 @@ describe('duplicate scan (read-only, Node-only)', () => {
     });
 
     it('counts unreadable channels as readErrors instead of hashing fallbacks', async () => {
-        // 非 R2 渠道无本地绑定 → readErrors,不产生假分组
+        // 非 R2 渠道且回环不可达(测试环境没有 /file/ 服务)→ readErrors,不产生假分组
         await seedWithChunks([
             { id: 'tg1.png', metadata: { FileName: 'tg1.png', Channel: 'TelegramNew', TimeStamp: 1 }, content: 'same' },
             { id: 'tg2.png', metadata: { FileName: 'tg2.png', Channel: 'TelegramNew', TimeStamp: 2 }, content: 'same' },
@@ -90,6 +90,39 @@ describe('duplicate scan (read-only, Node-only)', () => {
         const body = await (await scan.onRequest(ctx())).json();
         assert.equal(body.readErrors.length, 2);
         assert.equal(body.duplicateGroups.length, 0);
+    });
+
+    it('fork: groups non-R2 duplicates via loopback /file/ and rejects HTML responses', async () => {
+        await seedWithChunks([
+            { id: 'tg1.png', metadata: { FileName: 'tg1.png', Channel: 'TelegramNew', TimeStamp: 1 } },
+            { id: 'tg2.png', metadata: { FileName: 'tg2.png', Channel: 'TelegramNew', TimeStamp: 2 } },
+            { id: 'ok.png', metadata: { FileName: 'ok.png', Channel: 'TelegramNew', TimeStamp: 3 } },
+            { id: 'bad.png', metadata: { FileName: 'bad.png', Channel: 'TelegramNew', TimeStamp: 4 } },
+        ]);
+        const realFetch = globalThis.fetch;
+        globalThis.fetch = async (url) => {
+            const u = String(url);
+            if (u.endsWith('/file/tg1.png') || u.endsWith('/file/tg2.png')) {
+                return new Response('tg-same', { status: 200, headers: { 'content-type': 'image/png' } });
+            }
+            if (u.endsWith('/file/ok.png')) {
+                return new Response('unique-bytes', { status: 200, headers: { 'content-type': 'image/png' } });
+            }
+            if (u.endsWith('/file/bad.png')) {
+                return new Response('<html>login</html>', { status: 200, headers: { 'content-type': 'text/html' } });
+            }
+            return new Response('nope', { status: 404 });
+        };
+        try {
+            const body = await (await scan.onRequest(ctx())).json();
+            assert.equal(body.duplicateGroups.length, 1);
+            assert.equal(body.duplicateGroups[0].keep.id, 'tg1.png');
+            assert.deepEqual(body.duplicateGroups[0].duplicates.map(d => d.id), ['tg2.png']);
+            assert.equal(body.readErrors.length, 1);
+            assert.match(body.readErrors[0].error, /non-file content/);
+        } finally {
+            globalThis.fetch = realFetch;
+        }
     });
 
     it('skips oversized files and reports them separately', async () => {

@@ -11,6 +11,9 @@
  *
  * 有界执行:单文件大小上限(默认 100MB,可经 ?maxFileMB 调低),超限计入
  * skippedOversized;响应带完整性与失败范围,分片读取失败显式上报。
+ *
+ * fork 扩展:R2 绑定之外,其余渠道(Telegram/S3 等)经回环 /file/ 读取并
+ * 严格校验(见 readRecordBytes);上游版本仅支持 R2 绑定读取。
  */
 import { getDatabase } from '../../../utils/databaseAdapter.js';
 
@@ -89,9 +92,13 @@ export async function onRequest(context) {
             continue;
         }
         try {
-            const bytes = await readRecordBytes(env, record.id, meta);
+            const bytes = await readRecordBytes(env, record.id, meta, url.origin, maxFileBytes);
             if (bytes === null) {
                 readErrors.push({ id: record.id, error: 'content not readable via storage binding' });
+                continue;
+            }
+            if (typeof bytes === 'string') {
+                readErrors.push({ id: record.id, error: bytes });
                 continue;
             }
             const digest = await crypto.subtle.digest('SHA-256', bytes);
@@ -144,14 +151,36 @@ export async function onRequest(context) {
 /**
  * 经存储绑定直接读取文件内容(管理员可信路径):
  * - R2: env.img_r2.get(id).body
- * - 其余渠道(Telegram/S3/Discord/HuggingFace/WebDAV):返回 null 计入 readErrors
- *   (这些渠道无本地绑定,宁缺毋滥 —— 不用公开路由,避免白名单/重定向造成的假哈希)
+ * - 其余渠道(fork 扩展,自托管 Node 部署):经回环 /file/ 读取真实字节。
+ *   与 v1 的差别:严格校验响应,只接受 200 + 非 HTML/JSON/XML/纯文本,
+ *   防止白名单页 / 错误页 / 登录跳转被当成文件内容算出假哈希;
+ *   超过 maxFileBytes 返回描述字符串,计入 readErrors 而非默默跳过。
+ *   上游 PR 维持仅 R2 绑定读取,不带此扩展。
  */
-async function readRecordBytes(env, fileId, meta) {
+async function readRecordBytes(env, fileId, meta, origin, maxFileBytes) {
     if (meta.Channel === 'CloudflareR2' && env.img_r2?.get) {
         const obj = await env.img_r2.get(fileId);
         if (!obj || !obj.body) return null;
         return new Uint8Array(await new Response(obj.body).arrayBuffer());
+    }
+    if (origin) {
+        let resp;
+        try {
+            resp = await fetch(`${origin}/file/${encodeURIComponent(fileId)}`);
+        } catch (err) {
+            return `loopback /file/ fetch failed: ${String(err?.message || err)}`;
+        }
+        if (!resp.ok) return `loopback /file/ read failed: HTTP ${resp.status}`;
+        const ct = (resp.headers.get('content-type') || '').trim();
+        if (/^text\/html|^application\/(json|xml)|^text\/plain/i.test(ct)) {
+            return `loopback /file/ returned non-file content (content-type ${ct || 'unknown'})`;
+        }
+        const bytes = new Uint8Array(await resp.arrayBuffer());
+        if (bytes.byteLength > maxFileBytes) {
+            return `content size ${bytes.byteLength} exceeds maxFileMB cap`;
+        }
+        if (bytes.byteLength === 0) return 'loopback /file/ returned empty body';
+        return bytes;
     }
     return null;
 }
