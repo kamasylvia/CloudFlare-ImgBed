@@ -105,17 +105,20 @@ export async function onRequest(context) {
         const fileId = params.path.split(',').join('/');
         const cdnUrl = `https://${url.hostname}/file/${fileId}`;
 
-        const success = await deleteFile(env, fileId, cdnUrl, url);
-        if (!success) {
+        const result = await deleteFile(env, fileId, cdnUrl, url);
+        if (!result || !result.deleted) {
             throw new Error('Delete file failed');
         } else {
-            // 从索引中删除文件
-            waitUntil(removeFileFromIndex(context, fileId));
+            // 从索引中删除文件（记录本就不存在时索引亦无需变更，幂等）
+            if (result.existed) {
+                waitUntil(removeFileFromIndex(context, fileId));
+            }
         }
 
         return new Response(JSON.stringify({
             success: true,
-            fileId: fileId
+            fileId: fileId,
+            existed: result.existed
         }), {
             headers: { 'Content-Type': 'application/json', ...corsHeaders }
         });
@@ -137,10 +140,10 @@ export async function deleteFile(env, fileId, cdnUrl, url) {
         const db = getDatabase(env);
         const img = await db.getWithMetadata(fileId);
 
-        // 如果文件记录不存在，直接返回成功（幂等删除）
+        // 如果文件记录不存在，幂等成功但标记 existed=false（记录本来就没有）
         if (!img) {
             console.warn(`File ${fileId} not found in database, skipping delete`);
-            return true;
+            return { deleted: true, existed: false };
         }
 
         // 如果是R2渠道的图片，需要删除R2中对应的图片
@@ -181,10 +184,10 @@ export async function deleteFile(env, fileId, cdnUrl, url) {
         await purgeRandomFileListCache(url.origin, normalizedFolder);
         await purgePublicFileListCache(url.origin, normalizedFolder);
 
-        return true;
+        return { deleted: true, existed: true };
     } catch (e) {
         console.error('Delete file failed:', e);
-        return false;
+        return { deleted: false, existed: true };
     }
 }
 
