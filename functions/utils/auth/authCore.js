@@ -128,14 +128,14 @@ export async function authenticate({
     }
 
     if (authScope === AUTH_SCOPE.USER) {
-        return await checkUser({ ...userCtx, allowAnonymousUpload: securityConfig.auth?.user?.allowAnonymousUpload !== false });
+        return (await checkUser({ ...userCtx, allowAnonymousUpload: securityConfig.auth?.user?.allowAnonymousUpload !== false })) || UNAUTHORIZED;
     }
 
     // EITHER: 任一通过即可
     const adminResult = await checkAdmin({ ...adminCtx, allowAnonymousDelete: securityConfig.auth?.admin?.allowAnonymousDelete !== false });
     if (adminResult?.authorized) return adminResult;
 
-    return await checkUser({ ...userCtx, allowAnonymousUpload: securityConfig.auth?.user?.allowAnonymousUpload !== false });
+    return (await checkUser({ ...userCtx, allowAnonymousUpload: securityConfig.auth?.user?.allowAnonymousUpload !== false })) || UNAUTHORIZED;
 }
 
 /**
