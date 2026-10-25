@@ -176,6 +176,17 @@ export async function deleteFile(env, fileId, cdnUrl, url) {
         // 注意：容量统计现在由索引自动维护，删除文件后索引更新时会自动重新计算
         await db.delete(fileId);
 
+        // 回滚内容去重键(正向 sha→fileId 与反向 fileId→sha),使同内容可重新上传
+        try {
+            const dedupRev = await db.get(`manage@deduprev@${fileId}`);
+            if (dedupRev) {
+                await db.delete(`manage@dedup@${dedupRev}`);
+                await db.delete(`manage@deduprev@${fileId}`);
+            }
+        } catch (err) {
+            console.error('dedup key rollback failed:', err);
+        }
+
         // 清除CDN缓存
         await purgeCFCache(env, cdnUrl);
 

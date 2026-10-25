@@ -193,6 +193,41 @@ async function processFileUpload(context, formdata = null) {
 
     const fileExt = resolveFileExt(fileName, fileType);
 
+    // ===== 内容去重(SHA-256):命中已有文件直接返回其链接,不重复存储 =====
+    // 键位:manage@dedup@<sha256> → fileId(与系统设置同存于 settings 表,经 KV 抽象读写)
+    // 开关:upload.dedup.enabled(docker 部署默认开);?dedup=false 跳过单次;分片上传不经过本路径
+    const dedupConfig = context.uploadConfig?.dedup;
+    const dedupEnabled =
+        (dedupConfig?.enabled === true || (dedupConfig?.enabled === undefined && typeof context.env?.img_d1 !== 'undefined')) &&
+        url.searchParams.get('dedup') !== 'false';
+    let dedupHash = null;
+    if (dedupEnabled) {
+        try {
+            // FormData 的 File 只能消费一次:算哈希后必须把可读的新 File 放回 formdata 供渠道上传
+            const bytes = await file.arrayBuffer();
+            const readable = new File([bytes], file.name, { type: file.type });
+            formdata.set('file', readable);
+            const digest = await crypto.subtle.digest('SHA-256', bytes);
+            dedupHash = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+            context.dedupHash = dedupHash; // 供渠道函数上传成功后写键
+            const dedupDb = getDatabase(context.env);
+            const existingFileId = await dedupDb.get(`manage@dedup@${dedupHash}`);
+            if (existingFileId) {
+                // 悬空校验:目标文件记录可能已删(删除时回滚键),失效则清键继续正常上传
+                const record = await dedupDb.getWithMetadata(existingFileId);
+                if (record !== null) {
+                    console.log(`dedup hit: ${fileName} (${dedupHash.slice(0, 12)}…) -> ${existingFileId}`);
+                    return buildUploadResponse(context, `/file/${existingFileId}`);
+                }
+                await dedupDb.delete(`manage@dedup@${dedupHash}`).catch(() => {});
+                console.log(`dedup stale key removed: ${existingFileId}`);
+            }
+        } catch (err) {
+            console.error('dedup check failed, fallback to normal upload:', err);
+            dedupHash = null;
+        }
+    }
+
     // 构建文件ID
     const fullId = await buildUniqueFileId(context, fileName, fileType);
 
@@ -343,6 +378,14 @@ async function uploadFileToCloudflareR2(context, fullId, metadata, returnLink) {
     waitUntil(endUpload(context, fullId, metadata));
 
     // 成功上传，将文件ID返回给客户端
+    if (context.dedupHash) {
+        try {
+            await getDatabase(context.env).put(`manage@dedup@${context.dedupHash}`, fullId);
+            await getDatabase(context.env).put(`manage@deduprev@${fullId}`, context.dedupHash);
+        } catch (err) {
+            console.error('dedup key write failed:', err);
+        }
+    }
     return buildUploadResponse(context, returnLink);
 }
 
@@ -427,7 +470,15 @@ async function uploadFileToS3(context, fullId, metadata, returnLink) {
         // 结束上传
         waitUntil(endUpload(context, fullId, metadata));
 
-        return buildUploadResponse(context, returnLink);
+        if (context.dedupHash) {
+        try {
+            await getDatabase(context.env).put(`manage@dedup@${context.dedupHash}`, fullId);
+            await getDatabase(context.env).put(`manage@deduprev@${fullId}`, context.dedupHash);
+        } catch (err) {
+            console.error('dedup key write failed:', err);
+        }
+    }
+    return buildUploadResponse(context, returnLink);
     } catch (error) {
         return createResponse(`Error: Failed to upload to S3 - ${error.message}`, { status: 500 });
     }
@@ -519,6 +570,16 @@ async function uploadFileToTelegram(context, fullId, metadata, fileExt, fileName
         // 更新FileSize
         metadata.FileSize = (fileInfo.file_size / 1024 / 1024).toFixed(2);
 
+        // 上传成功写去重键
+        if (context.dedupHash) {
+            try {
+                await getDatabase(env).put(`manage@dedup@${context.dedupHash}`, fullId);
+                await getDatabase(env).put(`manage@deduprev@${fullId}`, context.dedupHash);
+            } catch (err) {
+                console.error('dedup key write failed:', err);
+            }
+        }
+
         // 将响应返回给客户端
         res = buildUploadResponse(context, returnLink);
 
@@ -580,6 +641,14 @@ async function uploadFileToExternal(context, fullId, metadata, returnLink) {
     waitUntil(endUpload(context, fullId, metadata));
 
     // 返回结果
+    if (context.dedupHash) {
+        try {
+            await getDatabase(context.env).put(`manage@dedup@${context.dedupHash}`, fullId);
+            await getDatabase(context.env).put(`manage@deduprev@${fullId}`, context.dedupHash);
+        } catch (err) {
+            console.error('dedup key write failed:', err);
+        }
+    }
     return buildUploadResponse(context, returnLink);
 }
 
@@ -660,7 +729,15 @@ async function uploadFileToDiscord(context, fullId, metadata, returnLink) {
         waitUntil(endUpload(context, fullId, metadata));
 
         // 返回成功响应
-        return buildUploadResponse(context, returnLink);
+        if (context.dedupHash) {
+        try {
+            await getDatabase(context.env).put(`manage@dedup@${context.dedupHash}`, fullId);
+            await getDatabase(context.env).put(`manage@deduprev@${fullId}`, context.dedupHash);
+        } catch (err) {
+            console.error('dedup key write failed:', err);
+        }
+    }
+    return buildUploadResponse(context, returnLink);
 
     } catch (error) {
         console.error('Discord upload error:', error.message);
@@ -774,7 +851,15 @@ async function uploadFileToHuggingFace(context, fullId, metadata, returnLink) {
         waitUntil(endUpload(context, fullId, metadata));
 
         // 返回成功响应
-        return buildUploadResponse(context, returnLink);
+        if (context.dedupHash) {
+        try {
+            await getDatabase(context.env).put(`manage@dedup@${context.dedupHash}`, fullId);
+            await getDatabase(context.env).put(`manage@deduprev@${fullId}`, context.dedupHash);
+        } catch (err) {
+            console.error('dedup key write failed:', err);
+        }
+    }
+    return buildUploadResponse(context, returnLink);
 
     } catch (error) {
         console.error('HuggingFace upload error:', error.message);
@@ -849,7 +934,15 @@ async function uploadFileToWebDAV(context, fullId, metadata, returnLink) {
 
         waitUntil(endUpload(context, fullId, metadata));
 
-        return buildUploadResponse(context, returnLink);
+        if (context.dedupHash) {
+        try {
+            await getDatabase(context.env).put(`manage@dedup@${context.dedupHash}`, fullId);
+            await getDatabase(context.env).put(`manage@deduprev@${fullId}`, context.dedupHash);
+        } catch (err) {
+            console.error('dedup key write failed:', err);
+        }
+    }
+    return buildUploadResponse(context, returnLink);
     } catch (error) {
         console.error('WebDAV upload error:', error.message);
         return createResponse(`Error: WebDAV upload failed - ${error.message}`, { status: 500 });
