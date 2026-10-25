@@ -25,7 +25,7 @@ describe('delete files', () => {
         const ctx = context(id);
         const response = await single.onRequest(ctx);
         assert.equal(response.status, 200);
-        assert.deepEqual(await response.json(), { success: true, fileId: id });
+        assert.deepEqual(await response.json(), { success: true, fileId: id, existed: true });
         assert.equal(fixture.objects.has(id), false);
         assert.equal(await fixture.db.getWithMetadata(id), null);
         const index = await fixture.readFiles(ctx);
@@ -43,6 +43,7 @@ describe('delete files', () => {
             const response = await single.onRequest(ctx);
             assert.equal(response.status, 200);
             assert.equal((await response.json()).success, true);
+            assert.equal((await response.json()).existed, false);
             assert.deepEqual((await fixture.readFiles(ctx)).files, []);
         }
         assert.deepEqual(fixture.purges, []);
