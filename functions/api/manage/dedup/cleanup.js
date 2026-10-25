@@ -26,9 +26,27 @@ export async function onRequest(context) {
     const origin = url.origin;
 
     const db = getDatabase(env);
-    const files = await db.prepare(
-        'SELECT id, file_name, channel, timestamp FROM files ORDER BY timestamp ASC'
-    ).all().then(r => r.results || []);
+    // docker 版数据库适配器只有 KV 方法(get/put/delete),无 SQL prepare;
+    // 文件记录存于分片索引(manage@index_N),经 readIndex 等价逻辑逐片读取
+    const files = [];
+    const metaStr = await db.get('manage@index@meta');
+    const meta = metaStr ? JSON.parse(metaStr) : { chunkCount: 0 };
+    for (let i = 0; i < (meta.chunkCount || 0); i++) {
+        try {
+            const chunkStr = await db.get(`manage@index_${i}`);
+            const chunk = chunkStr ? JSON.parse(chunkStr) : [];
+            for (const entry of chunk) {
+                files.push({
+                    id: entry.id,
+                    file_name: entry.metadata?.FileName || entry.id,
+                    channel: entry.metadata?.ChannelName || entry.metadata?.Channel || '',
+                    timestamp: entry.metadata?.TimeStamp || 0,
+                });
+            }
+        } catch (err) {
+            console.error('dedup cleanup: failed to read chunk', i, err);
+        }
+    }
 
     // 按内容分组
     const groups = new Map(); // sha256 -> [{ id, file_name, timestamp }]
