@@ -35,12 +35,14 @@ export async function onRequest(context) {
             }
         });
 
-        const deleted = results.filter((item) => item.success).map((item) => item.fileId);
+        // 兼容:deleted/failed 保持旧形态;新增 missing(幂等成功但记录本不存在)与逐项 details(含 existed)
+        const deleted = results.filter((item) => item.success && item.existed).map((item) => item.fileId);
+        const missing = results.filter((item) => item.success && !item.existed).map((item) => item.fileId);
         const failed = results.filter((item) => !item.success).map(({ fileId, error }) => ({ fileId, error }));
-        if (deleted.length > 0) {
-            context.waitUntil(batchRemoveFilesFromIndex(context, deleted));
+        if (missing.length > 0) {
+            context.waitUntil(batchRemoveFilesFromIndex(context, missing));
         }
-        return jsonResponse({ success: failed.length === 0, deleted, failed });
+        return jsonResponse({ success: failed.length === 0, deleted, missing, failed });
     } catch (error) {
         return jsonResponse({ success: false, error: error.message }, 400);
     }

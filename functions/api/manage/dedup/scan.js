@@ -36,7 +36,8 @@ export async function onRequest(context) {
         });
     }
 
-    const maxFileMB = Math.max(1, parseInt(url.searchParams.get('maxFileMB') || '100', 10));
+    const parsedMax = parseInt(url.searchParams.get('maxFileMB') || '100', 10);
+    const maxFileMB = Number.isFinite(parsedMax) && parsedMax >= 1 ? parsedMax : 100;
     const maxFileBytes = maxFileMB * 1024 * 1024;
 
     const db = getDatabase(env);

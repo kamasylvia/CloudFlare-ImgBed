@@ -57,9 +57,11 @@ export async function onRequest(context) {
                     const fileId = file.name;
                     const cdnUrl = `https://${url.hostname}/file/${fileId}`;
 
-                    const success = await deleteFile(env, fileId, cdnUrl, url);
-                    if (success) {
+                    const result = await deleteFile(env, fileId, cdnUrl, url);
+                    if (result && result.deleted && result.existed) {
                         deletedFiles.push(fileId);
+                    } else if (result && result.deleted) {
+                        missingFiles.push(fileId); // 幂等成功,记录本不存在
                     } else {
                         failedFiles.push(fileId);
                     }
