@@ -80,7 +80,9 @@ export async function onRequest(context) {
     for (const [hash, entries] of groups) {
         if (entries.length < 2) continue;
         report.duplicateGroups++;
-        const keep = entries[0]; // 已按 timestamp 升序，最早者保留
+        // 显式按时间戳升序选最早者(不依赖分片内顺序)
+        const sorted = [...entries].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+        const keep = sorted[0];
         report.kept.push({ id: keep.id, name: keep.name, link: `/file/${keep.id}` });
 
         // 回填去重索引：保留项命中后，后续同内容上传直接秒传到该链接
@@ -92,7 +94,7 @@ export async function onRequest(context) {
 
         if (dryRun) continue;
 
-        for (const dup of entries.slice(1)) {
+        for (const dup of sorted.slice(1)) {
             try {
                 const delResp = await fetch(`${origin}/api/manage/delete/${dup.id}`, {
                     method: 'DELETE',
