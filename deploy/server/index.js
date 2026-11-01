@@ -153,6 +153,28 @@ function findFunctionFile(pathname) {
         }
     }
 
+    // 2.5 尝试单段动态路由 [param].js（Pages Functions 语法子集，从深到浅;
+    // 精确匹配与 index.js 优先于动态段）
+    for (let i = parts.length; i >= 1; i--) {
+        const dirParts = parts.slice(0, i - 1);
+        const dirPath = join(FUNCTIONS_DIR, ...dirParts);
+        if (!existsSync(dirPath) || !statSync(dirPath).isDirectory()) continue;
+        const segment = parts[i - 1];
+        let entries;
+        try {
+            entries = readdirSync(dirPath);
+        } catch (err) {
+            continue;
+        }
+        for (const name of entries) {
+            const m = name.match(/^\[([^\[\]]+)\]\.js$/);
+            if (!m) continue;
+            const dynamicFile = join(dirPath, name);
+            if (!statSync(dynamicFile).isFile()) continue;
+            return { file: dynamicFile, params: { [m[1]]: decodeURIComponent(segment) } };
+        }
+    }
+
     // 3. 尝试 [[path]].js 通配符匹配（从深到浅）
     for (let i = parts.length; i >= 0; i--) {
         const dirParts = parts.slice(0, i);
