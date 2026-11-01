@@ -89,22 +89,48 @@ describe('reference registry (read-only orphans, fork-only)', () => {
         assert.equal(body.sources.length, 2);
     });
 
-    it('deleting a source removes it from the union so its files reappear as orphans', async () => {
+    it('deleting one source removes it from the union so its files reappear as orphans', async () => {
         await seedIndex([
             { id: 'ref1.png', metadata: { FileName: 'ref1.png', Channel: 'CloudflareR2', TimeStamp: 100 } },
             { id: 'orph1.png', metadata: { FileName: 'orph1.png', Channel: 'CloudflareR2', TimeStamp: 120 } },
         ]);
         await sourceRoute.onRequest(sourceCtx('siyuan', { body: JSON.stringify({ urls: ['/file/ref1.png'] }) }));
+        await sourceRoute.onRequest(sourceCtx('obsidian', { body: JSON.stringify({ urls: [] }) }));
         let body = await (await orphansRoute.onRequest(orphansCtx())).json();
         assert.equal(body.orphanCount, 1);
 
-        const del = await sourceRoute.onRequest(sourceCtx('siyuan', { method: 'DELETE' }));
+        const del = await sourceRoute.onRequest(sourceCtx('obsidian', { method: 'DELETE' }));
         assert.equal(del.status, 200);
         assert.equal((await del.json()).existed, true);
-
+        // obsidian 注销后 siyuan 仍在:orphan 集合 = 索引 − siyuan 快照
         body = await (await orphansRoute.onRequest(orphansCtx())).json();
-        assert.equal(body.orphanCount, 2);
-        assert.equal(body.sources.length, 0);
+        assert.equal(body.orphanCount, 1);
+        assert.equal(body.sources.length, 1);
+        assert.equal(body.sources[0].name, 'siyuan');
+    });
+
+    it('unregistering the last source returns the report to the conservative empty state', async () => {
+        await seedIndex([
+            { id: 'a.png', metadata: { FileName: 'a.png', Channel: 'CloudflareR2', TimeStamp: 1 } },
+        ]);
+        await sourceRoute.onRequest(sourceCtx('siyuan', { body: JSON.stringify({ urls: ['/file/a.png'] }) }));
+        await sourceRoute.onRequest(sourceCtx('siyuan', { method: 'DELETE' }));
+        const body = await (await orphansRoute.onRequest(orphansCtx())).json();
+        // 未登记 ≠ 无引用:注销最后一个源后回到保守空报告
+        assert.equal(body.noSources, true);
+        assert.equal(body.orphanCount, 0);
+    });
+
+    it('returns an empty report before any source has reported (conservative)', async () => {
+        await seedIndex([
+            { id: 'a.png', metadata: { FileName: 'a.png', Channel: 'CloudflareR2', TimeStamp: 1 } },
+            { id: 'b.png', metadata: { FileName: 'b.png', Channel: 'CloudflareR2', TimeStamp: 2 } },
+        ]);
+        const body = await (await orphansRoute.onRequest(orphansCtx())).json();
+        // 无源上报时不能把全部文件判成孤儿:未登记 ≠ 无引用
+        assert.equal(body.noSources, true);
+        assert.equal(body.orphanCount, 0);
+        assert.equal(body.complete, true);
     });
 
     it('reports incompleteness on missing index chunks instead of fake-complete orphans', async () => {
@@ -124,6 +150,7 @@ describe('reference registry (read-only orphans, fork-only)', () => {
             { id: 'a.png', metadata: { FileName: 'a.png', Channel: 'CloudflareR2', TimeStamp: 1 } },
             { id: 'b.png', metadata: { FileName: 'b.png', Channel: 'CloudflareR2', TimeStamp: 2 } },
         ]);
+        await sourceRoute.onRequest(sourceCtx('siyuan', { body: JSON.stringify({ urls: ['/file/a.png'] }) }));
         const body = await (await orphansRoute.onRequest(orphansCtx('?timeoutMs=0'))).json();
         assert.equal(body.complete, false);
         assert.equal(body.timedOut, true);

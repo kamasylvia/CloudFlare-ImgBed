@@ -37,6 +37,27 @@ export async function onRequest(context) {
 
     const db = getDatabase(env);
     const sources = await listSourceSnapshots(db, { now: Date.now() });
+    if (sources.length === 0) {
+        // 保守语义:尚无任何源上报时无法区分「确实无引用」与「尚未登记」,
+        // 报告为空而不是把全部文件判成孤儿;前端提示先接入客户端上报。
+        return new Response(JSON.stringify({
+            complete: true,
+            timedOut: false,
+            indexChanged: false,
+            chunkErrors: [],
+            recordErrors: [],
+            sources: [],
+            totalFiles: 0,
+            referencedCount: 0,
+            orphanCount: 0,
+            omitted: 0,
+            orphans: [],
+            noSources: true,
+            scannedAt: new Date().toISOString(),
+        }, null, 2), {
+            headers: { 'content-type': 'application/json' },
+        });
+    }
     const { perSource, union } = await loadReferencedIdSets(db, sources.map(s => s.name), deadline);
     if (deadline && Date.now() >= deadline) timedOut = true;
 
