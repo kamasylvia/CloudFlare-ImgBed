@@ -33,6 +33,7 @@ describe('content dedup on upload', () => {
             getIPAddress: async () => '',
             getUploadIp: () => '',
             moderateContent: async () => 'None',
+            resolveUploadExpiry: async () => ({ error: null, expiresAt: null }),
             endUpload: async () => {},
             createS3Client: () => ({ async send() { return { ETag: 'etag' }; } }),
             PutObjectCommand: class { constructor(input) { this.input = input; } },

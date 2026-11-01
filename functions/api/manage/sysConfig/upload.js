@@ -1,3 +1,5 @@
+import { normalizeFileExpiryConfig, validateFileExpiryConfig } from '../../../utils/fileExpiryHelpers.js';
+import { normalizeUploadFormatConfig, validateUploadFormatConfig } from '../../../utils/uploadFormat.js';
 import { getDatabase } from '../../../utils/databaseAdapter.js';
 import { normalizeWebDAVHeaders } from '../../../utils/storage/webdavAPI.js';
 import { normalizeS3UserAgent } from '../../../utils/storage/s3Client.js';
@@ -30,9 +32,19 @@ export async function onRequest(context) {
     if (request.method === 'POST') {
         const body = await request.json()
         const settings = body
-        // 去重开关：前端未提交时沿用已有值
-        const previousUploadSettings = JSON.parse((await db.get('manage@sysConfig@upload')) || '{}')
-        settings.dedup = body.dedup ?? previousUploadSettings.dedup ?? { enabled: false }
+        const oldSettings = await getUploadConfig(db, env);
+        const fileExpiry = validateFileExpiryConfig(settings.fileExpiry ?? oldSettings.fileExpiry);
+        if (fileExpiry.error) {
+            return new Response(fileExpiry.error, { status: 400 });
+        }
+        settings.fileExpiry = { ...fileExpiry.config, fixed: false };
+        const fileFormat = validateUploadFormatConfig(settings.fileFormat ?? oldSettings.fileFormat);
+        if (fileFormat.error) {
+            return new Response(fileFormat.error, { status: 400 });
+        }
+        settings.fileFormat = fileFormat.config;
+        // 去重开关:前端未提交时沿用已有值
+        settings.dedup = body.dedup ?? oldSettings.dedup ?? { enabled: false }
 
         try {
             for (const channel of settings.s3?.channels || []) {
@@ -340,6 +352,9 @@ export async function getUploadConfig(db, env) {
     settings.discord = discord
     settings.huggingface = huggingface
     settings.webdav = webdav
+
+    settings.fileExpiry = { ...normalizeFileExpiryConfig(settingsKV.fileExpiry), fixed: false };
+    settings.fileFormat = normalizeUploadFormatConfig(settingsKV.fileFormat);
 
     return settings;
 }
