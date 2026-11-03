@@ -31,18 +31,18 @@ export async function onRequest(context) {
                 const success = !!(result && result.deleted);
                 return { fileId, success, existed: !!(result && result.existed), error: success ? '' : 'Delete file failed' };
             } catch (err) {
-                return { fileId, success: false, error: String(err?.message || err) };
+                return { fileId, success: false, existed: false, error: String(err?.message || err) };
             }
         });
 
-        // 兼容:deleted/failed 保持旧形态;新增 missing(幂等成功但记录本不存在)与逐项 details(含 existed)
-        const deleted = results.filter((item) => item.success && item.existed).map((item) => item.fileId);
+        // deleted 包含所有处理成功的 ID；missing 是其中记录不存在的子集。
+        const deleted = results.filter((item) => item.success).map((item) => item.fileId);
         const missing = results.filter((item) => item.success && !item.existed).map((item) => item.fileId);
         const failed = results.filter((item) => !item.success).map(({ fileId, error }) => ({ fileId, error }));
-        if (missing.length > 0) {
-            context.waitUntil(batchRemoveFilesFromIndex(context, missing));
+        if (deleted.length > 0) {
+            context.waitUntil(batchRemoveFilesFromIndex(context, deleted));
         }
-        return jsonResponse({ success: failed.length === 0, deleted, missing, failed });
+        return jsonResponse({ success: failed.length === 0, deleted, missing, failed, details: results });
     } catch (error) {
         return jsonResponse({ success: false, error: error.message }, 400);
     }

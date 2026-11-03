@@ -31,7 +31,7 @@
 
 CloudFlare ImgBed 是支持 Docker 与 Serverless 部署的自建图床和文件托管方案，可将 **Telegram**、**Discord**、**Cloudflare R2**、**S3 兼容存储**、**Hugging Face**、**WebDAV** 等渠道统一接入一个管理界面。项目提供文件管理、身份认证、目录组织、内容审核、RESTful API 与 WebDAV，同时也在不断增加 AI 驱动的图片标签识别等个性化能力，适用于个人图床、网站资源管理和轻量文件分发。 **[查看完整功能 →](https://cfbed.sanyue.de/guide/features.html)**
 
-https://github.com/user-attachments/assets/69dae597-0d17-4b7c-9c7b-04ee81bd8219
+https://github.com/user-attachments/assets/5de3b74c-7d55-44f0-834e-0728e4c3e873
 
 **架构一览**
 
@@ -45,17 +45,12 @@ https://github.com/user-attachments/assets/69dae597-0d17-4b7c-9c7b-04ee81bd8219
   <tr>
     <td align="center" width="16%"><strong><a href="https://www.cloudflare.com/">Cloudflare</a></strong></td>
     <td align="center" width="22%"><a href="https://www.cloudflare.com/"><img src="readme/partners/cloudflare-logo.png" alt="Cloudflare Logo" height="25"></a></td>
-    <td><sub>提供 CDN 加速及安全防护</sub></td>
+    <td><sub>入选 Project Alexandria 计划，提供高级 CDN 加速及安全防护。</sub></td>
   </tr>
   <tr>
     <td align="center" width="16%"><strong><a href="https://edgeone.ai/?from=github">EdgeOne</a></strong></td>
     <td align="center" width="22%"><a href="https://edgeone.ai/?from=github"><picture><source media="(prefers-color-scheme: dark)" srcset="readme/partners/edgeone-logo-dark.png"><img src="readme/partners/edgeone-logo.png" alt="EdgeOne Logo" height="25"></picture></a></td>
-    <td><sub>提供 CDN 加速及安全防护</sub></td>
-  </tr>
-  <tr>
-    <td align="center" width="16%"><strong><a href="https://www.packyapi.ai/register?aff=u0Ka">PackyCode</a></strong></td>
-    <td align="center" width="22%"><a href="https://www.packyapi.ai/register?aff=u0Ka"><picture><source media="(prefers-color-scheme: dark)" srcset="readme/partners/packycode-logo-dark.png"><img src="readme/partners/packycode-logo.png" alt="PackyCode Logo" height="25"></picture></a></td>
-    <td><sub>提供稳定、高性价比的顶级大模型 API 服务，一站搞定文案、图片和代码，通过本项目链接注册立享充值折扣与免费额度！</sub></td>
+    <td><sub>入选开发者合作计划，高级 CDN 加速及安全防护</sub></td>
   </tr>
   <tr>
     <td align="center" width="16%"><strong><a href="https://www.hncloud.com/activity/activity_2026summer.html?k=MarSeventh">华纳云</a></strong></td>

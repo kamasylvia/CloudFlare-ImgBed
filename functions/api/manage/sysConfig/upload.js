@@ -1,3 +1,5 @@
+import { normalizeFileExpiryConfig, validateFileExpiryConfig } from '../../../utils/fileExpiryHelpers.js';
+import { normalizeUploadFormatConfig, validateUploadFormatConfig } from '../../../utils/uploadFormat.js';
 import { getDatabase } from '../../../utils/databaseAdapter.js';
 import { normalizeWebDAVHeaders } from '../../../utils/storage/webdavAPI.js';
 import { normalizeS3UserAgent } from '../../../utils/storage/s3Client.js';
@@ -30,9 +32,20 @@ export async function onRequest(context) {
     if (request.method === 'POST') {
         const body = await request.json()
         const settings = body
-        // 去重开关：前端未提交时沿用已有值
+        // 去重开关：前端未提交时沿用已有值(fork-only;getUploadConfig 的默认化结果不含未知字段,须读原始值)
         const previousUploadSettings = JSON.parse((await db.get('manage@sysConfig@upload')) || '{}')
         settings.dedup = body.dedup ?? previousUploadSettings.dedup ?? { enabled: false }
+        const oldSettings = await getUploadConfig(db, env);
+        const fileExpiry = validateFileExpiryConfig(settings.fileExpiry ?? oldSettings.fileExpiry);
+        if (fileExpiry.error) {
+            return new Response(fileExpiry.error, { status: 400 });
+        }
+        settings.fileExpiry = { ...fileExpiry.config, fixed: false };
+        const fileFormat = validateUploadFormatConfig(settings.fileFormat ?? oldSettings.fileFormat);
+        if (fileFormat.error) {
+            return new Response(fileFormat.error, { status: 400 });
+        }
+        settings.fileFormat = fileFormat.config;
 
         try {
             for (const channel of settings.s3?.channels || []) {
@@ -60,8 +73,7 @@ export async function getUploadConfig(db, env) {
     const settingsStr = await db.get('manage@sysConfig@upload')
     const settingsKV = settingsStr ? JSON.parse(settingsStr) : {}
 
-    // =====================读取tg渠道配置=====================
-    const telegram = {}
+    // =====================读取tg渠道配置==============    const telegram = {}
 
     const telegramChannels = []
     telegram.channels = telegramChannels
@@ -101,13 +113,11 @@ export async function getUploadConfig(db, env) {
     }
     telegram.loadBalance = tgLoadBalance
 
-    // =====================内容去重开关=====================
-    settings.dedup = settingsKV.dedup || { enabled: false }
+    // =====================内容去重开关==============    settings.dedup = settingsKV.dedup || { enabled: false }
 
 
 
-    // =====================读取r2渠道配置=====================
-    const cfr2 = {}
+    // =====================读取r2渠道配置==============    const cfr2 = {}
     const cfr2Channels = []
     cfr2.channels = cfr2Channels
     if (env.img_r2) {
@@ -146,8 +156,7 @@ export async function getUploadConfig(db, env) {
     cfr2.loadBalance = r2LoadBalance
 
 
-    // =====================读取s3渠道配置=====================
-    const s3 = {}
+    // =====================读取s3渠道配置==============    const s3 = {}
     const s3Channels = []
     s3.channels = s3Channels
     if (env.S3_ACCESS_KEY_ID) {
@@ -195,8 +204,7 @@ export async function getUploadConfig(db, env) {
     s3.loadBalance = s3LoadBalance
 
 
-    // =====================读取 Discord 渠道配置=====================
-    const discord = {}
+    // =====================读取 Discord 渠道配置==============    const discord = {}
     const discordChannels = []
     discord.channels = discordChannels
 
@@ -240,8 +248,7 @@ export async function getUploadConfig(db, env) {
     discord.loadBalance = discordLoadBalance
 
 
-    // =====================读取 HuggingFace 渠道配置=====================
-    const huggingface = {}
+    // =====================读取 HuggingFace 渠道配置==============    const huggingface = {}
     const huggingfaceChannels = []
     huggingface.channels = huggingfaceChannels
 
@@ -283,8 +290,7 @@ export async function getUploadConfig(db, env) {
     huggingface.loadBalance = huggingfaceLoadBalance
 
 
-    // =====================读取 WebDAV 渠道配置=====================
-    const webdav = {}
+    // =====================读取 WebDAV 渠道配置==============    const webdav = {}
     const webdavChannels = []
     webdav.channels = webdavChannels
 
@@ -340,6 +346,9 @@ export async function getUploadConfig(db, env) {
     settings.discord = discord
     settings.huggingface = huggingface
     settings.webdav = webdav
+
+    settings.fileExpiry = { ...normalizeFileExpiryConfig(settingsKV.fileExpiry), fixed: false };
+    settings.fileFormat = normalizeUploadFormatConfig(settingsKV.fileFormat);
 
     return settings;
 }

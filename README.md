@@ -31,7 +31,7 @@
 
 CloudFlare ImgBed is a self-hosted image and file hosting solution for Docker and serverless environments, bringing **Telegram**, **Discord**, **Cloudflare R2**, **S3-compatible storage**, **Hugging Face**, **WebDAV**, and more into one management interface. It provides file management, authentication, directory organization, content moderation, a RESTful API, and WebDAV, with a growing range of personalized AI capabilities such as image tag recognition. It is suited to personal image hosting, website asset management, and lightweight file distribution. **[View all features →](https://cfbed.sanyue.de/en/guide/features.html)**
 
-https://github.com/user-attachments/assets/69dae597-0d17-4b7c-9c7b-04ee81bd8219
+https://github.com/user-attachments/assets/5de3b74c-7d55-44f0-834e-0728e4c3e873
 
 **Architecture at a glance**
 
@@ -45,17 +45,12 @@ Built on an isomorphic core, the engine runs seamlessly across Pages, Workers, a
   <tr>
     <td align="center" width="16%"><strong><a href="https://www.cloudflare.com/">Cloudflare</a></strong></td>
     <td align="center" width="22%"><a href="https://www.cloudflare.com/"><img src="readme/partners/cloudflare-logo.png" alt="Cloudflare logo" height="25"></a></td>
-    <td><sub>Provides CDN acceleration and security protection</sub></td>
+    <td><sub>Selected for Project Alexandria, receiving advanced CDN acceleration and security protection.</sub></td>
   </tr>
   <tr>
     <td align="center" width="16%"><strong><a href="https://edgeone.ai/?from=github">EdgeOne</a></strong></td>
     <td align="center" width="22%"><a href="https://edgeone.ai/?from=github"><picture><source media="(prefers-color-scheme: dark)" srcset="readme/partners/edgeone-logo-dark.png"><img src="readme/partners/edgeone-logo.png" alt="EdgeOne logo" height="25"></picture></a></td>
-    <td><sub>Provides CDN acceleration and security protection</sub></td>
-  </tr>
-  <tr>
-    <td align="center" width="16%"><strong><a href="https://www.packyapi.ai/register?aff=u0Ka">PackyCode</a></strong></td>
-    <td align="center" width="22%"><a href="https://www.packyapi.ai/register?aff=u0Ka"><picture><source media="(prefers-color-scheme: dark)" srcset="readme/partners/packycode-logo-dark.png"><img src="readme/partners/packycode-logo.png" alt="PackyCode logo" height="25"></picture></a></td>
-    <td><sub>Provide premium, stable, and budget-friendly LLM APIs. Generate text, images, and code all in one place. Sign up via our link for free credits and exclusive discounts!</sub></td>
+    <td><sub>Selected for the developer partnership program, receiving advanced CDN acceleration and security protection</sub></td>
   </tr>
   <tr>
     <td align="center" width="16%"><strong><a href="https://www.hncloud.com/activity/activity_2026summer.html?k=MarSeventh">Hncloud</a></strong></td>
