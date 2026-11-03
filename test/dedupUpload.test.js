@@ -42,6 +42,8 @@ describe('content dedup on upload', () => {
             purgeCFCache: async () => {},
             purgeRandomFileListCache: async () => {},
             purgePublicFileListCache: async () => {},
+            // 上游引入的 fileExpiryService:dedup 测试不关心有效期,给恒空结果
+            resolveUploadExpiry: async () => ({}),
         };
     });
 

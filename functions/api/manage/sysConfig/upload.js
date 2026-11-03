@@ -73,7 +73,8 @@ export async function getUploadConfig(db, env) {
     const settingsStr = await db.get('manage@sysConfig@upload')
     const settingsKV = settingsStr ? JSON.parse(settingsStr) : {}
 
-    // =====================读取tg渠道配置==============    const telegram = {}
+    // =====================读取tg渠道配置=====================
+    const telegram = {}
 
     const telegramChannels = []
     telegram.channels = telegramChannels
@@ -117,7 +118,8 @@ export async function getUploadConfig(db, env) {
 
 
 
-    // =====================读取r2渠道配置==============    const cfr2 = {}
+    // =====================读取r2渠道配置==============
+    const cfr2 = {}
     const cfr2Channels = []
     cfr2.channels = cfr2Channels
     if (env.img_r2) {
@@ -156,7 +158,8 @@ export async function getUploadConfig(db, env) {
     cfr2.loadBalance = r2LoadBalance
 
 
-    // =====================读取s3渠道配置==============    const s3 = {}
+    // =====================读取s3渠道配置==============
+    const s3 = {}
     const s3Channels = []
     s3.channels = s3Channels
     if (env.S3_ACCESS_KEY_ID) {
@@ -204,7 +207,8 @@ export async function getUploadConfig(db, env) {
     s3.loadBalance = s3LoadBalance
 
 
-    // =====================读取 Discord 渠道配置==============    const discord = {}
+    // =====================读取 Discord 渠道配置==============
+    const discord = {}
     const discordChannels = []
     discord.channels = discordChannels
 
@@ -248,7 +252,8 @@ export async function getUploadConfig(db, env) {
     discord.loadBalance = discordLoadBalance
 
 
-    // =====================读取 HuggingFace 渠道配置==============    const huggingface = {}
+    // =====================读取 HuggingFace 渠道配置==============
+    const huggingface = {}
     const huggingfaceChannels = []
     huggingface.channels = huggingfaceChannels
 
@@ -290,7 +295,8 @@ export async function getUploadConfig(db, env) {
     huggingface.loadBalance = huggingfaceLoadBalance
 
 
-    // =====================读取 WebDAV 渠道配置==============    const webdav = {}
+    // =====================读取 WebDAV 渠道配置==============
+    const webdav = {}
     const webdavChannels = []
     webdav.channels = webdavChannels
 
