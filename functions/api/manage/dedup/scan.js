@@ -5,6 +5,9 @@
  * 扫描不修改记录、索引或存储。每组建议保留有效时间戳最早的记录；
  * 整组时间戳未知时显式标注。单文件上限 100 MiB，总预算 30 秒，参数只能调低。
  * 读取异常、跳过文件、超时或索引变化均标记为不完整；其他渠道报告为不可读。
+ *
+ * fork 扩展:R2 绑定之外,其余渠道经回环 /file/ 读取并严格校验(见 readRecordBytes);
+ * 上游版本仅支持 R2 绑定读取(上游 issue #771 相关讨论中保留了该项保守策略)。
  */
 import { getDatabase } from '../../../utils/databaseAdapter.js';
 
@@ -63,10 +66,14 @@ async function readBounded(body, cap, deadline) {
 /**
  * 经存储绑定直接读取文件内容(管理员可信路径):
  * - R2: env.img_r2.get(id),以返回的 obj.size 为准执行大小上限,流式有界读取;
- * - 其余渠道(Telegram/S3/Discord/HuggingFace/WebDAV):返回 null 计入 readErrors
- *   (这些渠道无本地绑定,宁缺毋滥 —— 不用公开路由,避免白名单/重定向造成的假哈希)
+ * - 其余渠道(Telegram/S3 等,fork 扩展,自托管 Node 部署):经回环 /file/ 读取真实字节。
+ *   与公开路由的区别:严格校验响应 —— 只接受 200 + 非 HTML/JSON/XML/纯文本的
+ *   content-type,防止白名单页 / 错误页 / 登录跳转被当成文件内容算出假哈希;
+ *   超过 maxFileBytes 计入 oversized,fetch 失败/非法响应以异常上抛计入 readErrors。
+ *   上游版本仅支持 R2 绑定读取(见上游 issue #771 讨论中对公开路由的顾虑);
+ *   fork 面向自托管部署,回环读取经过鉴权中间件与响应校验,恢复该部分功能。
  */
-async function readRecordBytes(env, fileId, meta, maxFileBytes, deadline) {
+async function readRecordBytes(env, fileId, meta, maxFileBytes, deadline, origin) {
     if (meta.Channel === 'CloudflareR2' && env.img_r2?.get) {
         let pending;
         let obj;
@@ -87,6 +94,24 @@ async function readRecordBytes(env, fileId, meta, maxFileBytes, deadline) {
             return { oversized: true };
         }
         return await readBounded(obj.body, maxFileBytes, deadline);
+    }
+    // fork 扩展:非 R2 渠道经回环 /file/ 读取(见函数头注释)
+    if (origin) {
+        const resp = await withDeadline(
+            () => fetch(`${origin}/file/${encodeURIComponent(fileId)}`),
+            deadline,
+        );
+        if (!resp.ok) throw new Error(`loopback /file/ read failed: HTTP ${resp.status}`);
+        const ct = (resp.headers.get('content-type') || '').trim();
+        if (/^text\/html|^application\/(json|xml)|^text\/plain/i.test(ct)) {
+            throw new Error(`loopback /file/ returned non-file content (content-type ${ct || 'unknown'})`);
+        }
+        const bounded = await readBounded(resp.body, maxFileBytes, deadline);
+        if (bounded.oversized) return { oversized: true };
+        if (!bounded.bytes || bounded.bytes.byteLength === 0) {
+            throw new Error('loopback /file/ returned empty body');
+        }
+        return { bytes: bounded.bytes };
     }
     return null;
 }
@@ -232,7 +257,7 @@ export async function onRequest(context) {
             continue;
         }
         try {
-            const result = await readRecordBytes(env, record.id, meta, maxFileBytes, deadline);
+            const result = await readRecordBytes(env, record.id, meta, maxFileBytes, deadline, url.origin);
             if (result === null) {
                 readErrors.push({ id: record.id, error: 'content not readable via storage binding' });
                 continue;
@@ -316,7 +341,7 @@ export async function onRequest(context) {
         recordErrors,
         readErrors,
         skippedOversized,
-        readableChannels: ['CloudflareR2'],
+        readableChannels: ['CloudflareR2', 'loopback /file/ (fork)'],
         totalGroups: groups.size,
         duplicateGroups,
         redundantCopies,

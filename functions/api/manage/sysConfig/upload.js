@@ -32,9 +32,6 @@ export async function onRequest(context) {
     if (request.method === 'POST') {
         const body = await request.json()
         const settings = body
-        // 去重开关：前端未提交时沿用已有值(fork-only;getUploadConfig 的默认化结果不含未知字段,须读原始值)
-        const previousUploadSettings = JSON.parse((await db.get('manage@sysConfig@upload')) || '{}')
-        settings.dedup = body.dedup ?? previousUploadSettings.dedup ?? { enabled: false }
         const oldSettings = await getUploadConfig(db, env);
         const fileExpiry = validateFileExpiryConfig(settings.fileExpiry ?? oldSettings.fileExpiry);
         if (fileExpiry.error) {
@@ -46,6 +43,8 @@ export async function onRequest(context) {
             return new Response(fileFormat.error, { status: 400 });
         }
         settings.fileFormat = fileFormat.config;
+        // 去重开关:前端未提交时沿用已有值
+        settings.dedup = body.dedup ?? oldSettings.dedup ?? { enabled: false }
 
         try {
             for (const channel of settings.s3?.channels || []) {
@@ -114,11 +113,12 @@ export async function getUploadConfig(db, env) {
     }
     telegram.loadBalance = tgLoadBalance
 
-    // =====================内容去重开关==============    settings.dedup = settingsKV.dedup || { enabled: false }
+    // =====================内容去重开关=====================
+    settings.dedup = settingsKV.dedup || { enabled: false }
 
 
 
-    // =====================读取r2渠道配置==============
+    // =====================读取r2渠道配置=====================
     const cfr2 = {}
     const cfr2Channels = []
     cfr2.channels = cfr2Channels
@@ -158,7 +158,7 @@ export async function getUploadConfig(db, env) {
     cfr2.loadBalance = r2LoadBalance
 
 
-    // =====================读取s3渠道配置==============
+    // =====================读取s3渠道配置=====================
     const s3 = {}
     const s3Channels = []
     s3.channels = s3Channels
@@ -207,7 +207,7 @@ export async function getUploadConfig(db, env) {
     s3.loadBalance = s3LoadBalance
 
 
-    // =====================读取 Discord 渠道配置==============
+    // =====================读取 Discord 渠道配置=====================
     const discord = {}
     const discordChannels = []
     discord.channels = discordChannels
@@ -252,7 +252,7 @@ export async function getUploadConfig(db, env) {
     discord.loadBalance = discordLoadBalance
 
 
-    // =====================读取 HuggingFace 渠道配置==============
+    // =====================读取 HuggingFace 渠道配置=====================
     const huggingface = {}
     const huggingfaceChannels = []
     huggingface.channels = huggingfaceChannels
@@ -295,7 +295,7 @@ export async function getUploadConfig(db, env) {
     huggingface.loadBalance = huggingfaceLoadBalance
 
 
-    // =====================读取 WebDAV 渠道配置==============
+    // =====================读取 WebDAV 渠道配置=====================
     const webdav = {}
     const webdavChannels = []
     webdav.channels = webdavChannels

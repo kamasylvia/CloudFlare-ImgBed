@@ -400,6 +400,41 @@ describe('duplicate scan (read-only, Node-only)', () => {
 
     it('declares which channels the scan can actually read', async () => {
         const body = await (await scan.onRequest(ctx())).json();
-        assert.deepEqual(body.readableChannels, ['CloudflareR2']);
+        // fork:除 R2 绑定外,其余渠道经回环 /file/ 读取(见 scan.js fork 扩展注释)
+        assert.deepEqual(body.readableChannels, ['CloudflareR2', 'loopback /file/ (fork)']);
+    });
+
+    it('fork: groups non-R2 duplicates via validated loopback /file/ reads', async () => {
+        await seedWithChunks([
+            { id: 'tg1.png', metadata: { FileName: 'tg1.png', Channel: 'TelegramNew', TimeStamp: 1 }, content: 'tg-same' },
+            { id: 'tg2.png', metadata: { FileName: 'tg2.png', Channel: 'TelegramNew', TimeStamp: 2 }, content: 'tg-same' },
+            { id: 'ok.png', metadata: { FileName: 'ok.png', Channel: 'TelegramNew', TimeStamp: 3 }, content: 'unique-bytes' },
+            { id: 'bad.png', metadata: { FileName: 'bad.png', Channel: 'TelegramNew', TimeStamp: 4 }, content: 'ignored' },
+        ]);
+        const realFetch = globalThis.fetch;
+        globalThis.fetch = async (url) => {
+            const u = String(url);
+            if (u.endsWith('/file/tg1.png') || u.endsWith('/file/tg2.png')) {
+                return new Response('tg-same', { status: 200, headers: { 'content-type': 'image/png' } });
+            }
+            if (u.endsWith('/file/ok.png')) {
+                return new Response('unique-bytes', { status: 200, headers: { 'content-type': 'image/png' } });
+            }
+            if (u.endsWith('/file/bad.png')) {
+                return new Response('<html>login</html>', { status: 200, headers: { 'content-type': 'text/html' } });
+            }
+            return new Response('nope', { status: 404 });
+        };
+        try {
+            const body = await (await scan.onRequest(ctx())).json();
+            assert.equal(body.duplicateGroups.length, 1);
+            assert.equal(body.duplicateGroups[0].keep.id, 'tg1.png');
+            assert.deepEqual(body.duplicateGroups[0].duplicates.map(d => d.id), ['tg2.png']);
+            // HTML 冒充文件内容的响应必须计错,不得算出假哈希
+            assert.equal(body.readErrors.length, 1);
+            assert.match(body.readErrors[0].error, /non-file content/);
+        } finally {
+            globalThis.fetch = realFetch;
+        }
     });
 });
